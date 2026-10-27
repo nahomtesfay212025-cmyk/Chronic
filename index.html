@@ -162,6 +162,25 @@
       .upload input {
         display: none;
       }
+      .source-actions {
+        display: grid;
+        grid-template-columns: 1fr 1.4fr;
+        gap: 10px;
+        margin: 14px 0;
+      }
+      .source-actions .upload { padding: 11px; }
+      .source-actions .upload strong { font-size: 0.82rem; }
+      .camera-modal section { color: #ffffff; }
+      .camera-modal video {
+        display: block;
+        width: 100%;
+        max-height: 380px;
+        object-fit: cover;
+        margin-top: 16px;
+        border-radius: 12px;
+        background: #000000;
+      }
+      .camera-status { color: var(--m); font-size: 0.82rem; min-height: 18px; }
       .preview {
         display: none;
         max-height: 120px;
@@ -436,14 +455,16 @@
                 <button class="choice on" data-t="bp">Blood pressure</button
                 ><button class="choice" data-t="gl">Blood glucose</button>
               </div>
-              <label class="upload">
-                <strong>Take or upload a monitor photo</strong>Clear, well-lit
-                images work best<input
-                  id="photo"
-                  type="file"
-                  accept="image/*"
-                  capture="environment" /></label
-              ><img id="preview" class="preview" />
+              <div class="source-actions">
+                <button id="open-camera" class="primary" type="button">📷 Take a photo</button>
+                <label class="upload">
+                  <strong>Upload a monitor photo</strong>Clear, well-lit images work best<input
+                    id="photo"
+                    type="file"
+                    accept="image/*"
+                    capture="environment" /></label>
+              </div>
+              <img id="preview" class="preview" />
               <div id="scan" class="scan">
                 Photo ready.<button id="read" class="read">Read display</button
                 ><span id="status"></span>
@@ -496,6 +517,19 @@
       </div>
     </main>
     <div id="toast" class="toast">Saved</div>
+    <div id="camera-modal" class="modal hide camera-modal" role="dialog" aria-modal="true" aria-label="Take monitor photo">
+      <section>
+        <div class="head"><h2>Take a monitor photo</h2><span class="badge">Camera</span></div>
+        <p class="sub">Center the display and keep the numbers clear.</p>
+        <video id="camera-preview" autoplay playsinline></video>
+        <canvas id="camera-canvas" hidden></canvas>
+        <p id="camera-status" class="camera-status"></p>
+        <div class="act">
+          <button id="close-camera" class="secondary" type="button">Cancel</button>
+          <button id="capture-photo" class="primary" type="button">Capture photo</button>
+        </div>
+      </section>
+    </div>
     <div id="modal" class="modal">
       <section>
         <div class="dots"><i class="on"></i><i></i><i></i></div>
@@ -561,15 +595,55 @@
             $("gl").style.display = t == "gl" ? "grid" : "none";
           }),
       );
+      function showPhoto(source) {
+        img = source;
+        $("preview").src = img;
+        $("preview").style.display = "block";
+        $("scan").style.display = "block";
+      }
       $("photo").onchange = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
         let r = new FileReader();
-        r.onload = () => {
-          img = r.result;
-          $("preview").src = img;
-          $("preview").style.display = "block";
-          $("scan").style.display = "block";
-        };
-        r.readAsDataURL(e.target.files[0]);
+        r.onload = () => showPhoto(r.result);
+        r.readAsDataURL(file);
+      };
+      let cameraStream;
+      async function openCamera() {
+        if (!navigator.mediaDevices?.getUserMedia) {
+          return say("Camera needs HTTPS or localhost. Please upload a photo.");
+        }
+        $("camera-modal").classList.remove("hide");
+        $("camera-status").textContent = "Starting camera…";
+        try {
+          cameraStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { ideal: "environment" } },
+            audio: false,
+          });
+          $("camera-preview").srcObject = cameraStream;
+          $("camera-status").textContent = "Camera ready. Capture when the display is clear.";
+        } catch (error) {
+          $("camera-status").textContent = "Camera permission was not available. You can still upload a photo.";
+        }
+      }
+      function closeCamera() {
+        cameraStream?.getTracks().forEach((track) => track.stop());
+        cameraStream = null;
+        $("camera-preview").srcObject = null;
+        $("camera-modal").classList.add("hide");
+      }
+      $("open-camera").onclick = openCamera;
+      $("close-camera").onclick = closeCamera;
+      $("capture-photo").onclick = () => {
+        const video = $("camera-preview");
+        if (!cameraStream || !video.videoWidth) return $("camera-status").textContent = "Wait for the camera preview to load.";
+        const canvas = $("camera-canvas");
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        canvas.getContext("2d").drawImage(video, 0, 0);
+        showPhoto(canvas.toDataURL("image/jpeg", 0.9));
+        closeCamera();
+        say("Photo captured. Check the values below.");
       };
       $("read").onclick = async () => {
         if (!img || !window.Tesseract) return;
