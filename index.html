@@ -101,6 +101,17 @@
         font-weight: 800;
       }
       .history-filter.on { background: #ffffff; color: var(--i); }
+      .insight-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 14px;
+        margin-top: 18px;
+      }
+      .insight-stat { background: var(--l); border-radius: 13px; padding: 17px; }
+      .insight-stat span { color: var(--m); display: block; font-size: 0.78rem; }
+      .insight-stat b { display: block; margin-top: 8px; font-size: 1.6rem; }
+      .insight-note { margin-top: 16px; background: #123b68; border-radius: 12px; padding: 15px; color: #ffffff; }
+      @media (max-width: 700px) { .insight-grid { grid-template-columns: 1fr; } }
       .tip {
         margin-top: 35px;
         background: #092a50;
@@ -467,7 +478,7 @@
           <p>MENU</p>
           <button class="nav on" id="nav-dashboard" type="button">⌂ &nbsp; Dashboard</button>
           <button class="nav" id="nav-history" type="button">⌁ &nbsp; History</button>
-          <div class="nav">✦ &nbsp; Insights</div>
+          <button class="nav" id="nav-insights" type="button">✦ &nbsp; Insights</button>
           <div class="tip">
             <b>One step at a time.</b><br />Log a reading whenever you take one.
           </div>
@@ -550,6 +561,19 @@
               <button id="clear" class="secondary">Clear all</button>
             </div>
             <div id="history"><p class="sub">No readings saved yet.</p></div>
+          </section>
+        </section>
+        <section id="insights-view" class="view hide">
+          <div class="welcome">
+            <div><h1>Your insights</h1><p>Simple summaries from readings saved on this device.</p></div>
+          </div>
+          <section class="card history-page">
+            <div class="head"><div><h2>Reading summary</h2><p class="sub">Tracking information only, not medical advice.</p></div></div>
+            <div class="trend-toggle">
+              <button class="insight-choice trend-choice on" data-insight="bp" type="button">Blood pressure</button>
+              <button class="insight-choice trend-choice" data-insight="gl" type="button">Blood glucose</button>
+            </div>
+            <div id="insight-content"></div>
           </section>
         </section>
         <section id="history-view" class="view hide">
@@ -814,6 +838,7 @@
           : '<p class="sub">No readings saved yet.</p>';
         renderTrend();
         renderAllHistory();
+        renderInsights();
       }
       let historyFilter = "all";
       function renderAllHistory() {
@@ -832,16 +857,49 @@
         };
       });
       function showView(name) {
-        const isHistory = name == "history";
-        $("dashboard-view").classList.toggle("hide", isHistory);
-        $("history-view").classList.toggle("hide", !isHistory);
-        $("nav-dashboard").classList.toggle("on", !isHistory);
-        $("nav-history").classList.toggle("on", isHistory);
-        if (isHistory) renderAllHistory();
+        $("dashboard-view").classList.toggle("hide", name != "dashboard");
+        $("history-view").classList.toggle("hide", name != "history");
+        $("insights-view").classList.toggle("hide", name != "insights");
+        $("nav-dashboard").classList.toggle("on", name == "dashboard");
+        $("nav-history").classList.toggle("on", name == "history");
+        $("nav-insights").classList.toggle("on", name == "insights");
+        if (name == "history") renderAllHistory();
+        if (name == "insights") renderInsights();
       }
       $("nav-dashboard").onclick = () => showView("dashboard");
       $("nav-history").onclick = () => showView("history");
+      $("nav-insights").onclick = () => showView("insights");
       $("history-clear").onclick = () => $("clear").click();
+      let insightType = "bp";
+      function renderInsights() {
+        const readings = rs.filter((r) => r.t == insightType).reverse();
+        const label = insightType == "bp" ? "blood-pressure" : "blood-glucose";
+        if (!readings.length) {
+          $("insight-content").innerHTML = `<div class="insight-note">Save ${label} readings to unlock your summary.</div>`;
+          return;
+        }
+        const primary = readings.map((r) => valueFor(r, insightType));
+        const latest = primary.at(-1), previous = primary.at(-2);
+        const average = Math.round(primary.reduce((sum, value) => sum + value, 0) / primary.length);
+        const unit = insightType == "bp" ? "mmHg" : "mg/dL";
+        const averageLabel = insightType == "bp" ? "Average systolic" : "Average glucose";
+        const change = previous == null ? "No earlier reading to compare." : latest == previous ? "Your latest value is the same as the previous one." : `Your latest value is ${Math.abs(latest - previous)} ${latest > previous ? "higher" : "lower"} than the previous one.`;
+        let extra = "";
+        if (insightType == "bp") {
+          const diastolic = readings.map((r) => r.dia || Number((r.v || "").match(/\/(\d+)/)?.[1])).filter(Boolean);
+          extra = `<div class="insight-stat"><span>Average diastolic</span><b>${Math.round(diastolic.reduce((sum, value) => sum + value, 0) / diastolic.length)} <small>mmHg</small></b></div>`;
+        } else {
+          extra = `<div class="insight-stat"><span>Latest reading</span><b>${latest} <small>mg/dL</small></b></div>`;
+        }
+        $("insight-content").innerHTML = `<div class="insight-grid"><div class="insight-stat"><span>Readings saved</span><b>${readings.length}</b></div><div class="insight-stat"><span>${averageLabel}</span><b>${average} <small>${unit}</small></b></div>${extra}</div><div class="insight-note"><b>Latest trend:</b> ${change}</div>`;
+      }
+      document.querySelectorAll(".insight-choice").forEach((button) => {
+        button.onclick = () => {
+          insightType = button.dataset.insight;
+          document.querySelectorAll(".insight-choice").forEach((x) => x.classList.toggle("on", x == button));
+          renderInsights();
+        };
+      });
       function valueFor(r, kind) {
         if (kind == "bp") return r.sys || Number((r.v || "").split("/")[0]);
         return r.glucose || Number((r.v || "").match(/\d+/)?.[0]);
