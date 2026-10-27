@@ -254,6 +254,42 @@
         max-width: 30px;
         border-radius: 6px 6px 0 0;
       }
+      .trend-toggle {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 7px;
+        margin: 18px 0 11px;
+      }
+      .trend-choice {
+        border: 1px solid #47729b;
+        background: transparent;
+        color: var(--m);
+        border-radius: 8px;
+        padding: 7px;
+        font-size: 0.75rem;
+        font-weight: 800;
+      }
+      .trend-choice.on {
+        background: #ffffff;
+        color: var(--i);
+      }
+      .trend-summary {
+        min-height: 30px;
+        color: #ffffff;
+        font-size: 0.82rem;
+      }
+      .trend-summary b { color: #ff9d5d; }
+      .barwrap {
+        position: relative;
+      }
+      .barwrap span {
+        position: absolute;
+        bottom: -19px;
+        color: var(--m);
+        font-size: 0.62rem;
+      }
+      .chart { margin-bottom: 20px; }
+      .trend-caption { color: var(--m); font-size: 0.72rem; margin: 0; }
       .history {
         margin-top: 18px;
       }
@@ -433,16 +469,20 @@
             <section class="card activity">
               <div class="head">
                 <div>
-                  <h2>Your activity</h2>
-                  <p class="sub">This device only</p>
+                  <h2>Your trends</h2>
+                  <p class="sub">Based on readings saved on this device</p>
                 </div>
                 <span class="badge" id="state">No data</span>
               </div>
               <div id="count" class="count">0</div>
               <p>readings saved</p>
-              <div id="chart" class="chart">
-                <p>Your pattern will appear here.</p>
+              <div class="trend-toggle" aria-label="Choose a trend to view">
+                <button class="trend-choice on" data-trend="bp">Blood pressure</button>
+                <button class="trend-choice" data-trend="gl">Blood glucose</button>
               </div>
+              <div id="trend-summary" class="trend-summary">Save readings to see a trend.</div>
+              <div id="chart" class="chart"></div>
+              <p id="trend-caption" class="trend-caption"></p>
             </section>
           </div>
           <section class="card history">
@@ -565,6 +605,9 @@
           id: Date.now(),
           t,
           v,
+          sys: t == "bp" ? Number($("sys").value) : null,
+          dia: t == "bp" ? Number($("dia").value) : null,
+          glucose: t == "gl" ? Number($("glu").value) : null,
           d: new Date().toLocaleString([], {
             month: "short",
             day: "numeric",
@@ -593,16 +636,42 @@
               )
               .join("")
           : '<p class="sub">No readings saved yet.</p>';
-        $("chart").innerHTML = rs.length
-          ? rs
-              .slice(0, 7)
-              .map(
-                (r, i) =>
-                  `<div class="barwrap"><div class="bar" style="height:${35 + i * 8}%"></div></div>`,
-              )
-              .join("")
-          : "<p>Your pattern will appear here.</p>";
+        renderTrend();
       }
+      function valueFor(r, kind) {
+        if (kind == "bp") return r.sys || Number((r.v || "").split("/")[0]);
+        return r.glucose || Number((r.v || "").match(/\\d+/)?.[0]);
+      }
+      function renderTrend() {
+        const readings = rs.filter((r) => r.t == trendType && valueFor(r, trendType)).slice(0, 7).reverse();
+        const label = trendType == "bp" ? "systolic" : "glucose";
+        $("trend-summary").textContent = readings.length
+          ? ""
+          : "Save " + (trendType == "bp" ? "blood-pressure" : "glucose") + " readings to see a trend.";
+        $("trend-caption").textContent = readings.length ? "Last " + readings.length + " saved " + label + " values" : "";
+        if (!readings.length) {
+          $("chart").innerHTML = "<p>Your pattern will appear here.</p>";
+          return;
+        }
+        const values = readings.map((r) => valueFor(r, trendType));
+        const low = Math.min(...values), high = Math.max(...values), spread = high - low || 1;
+        const latest = values.at(-1), previous = values.at(-2);
+        const change = previous == null ? "First saved reading" : (latest - previous == 0 ? "No change from previous" : (latest > previous ? "↑ " : "↓ ") + Math.abs(latest - previous) + " from previous");
+        $("trend-summary").innerHTML = `Latest: <b>${latest}${trendType == "bp" ? " mmHg" : " mg/dL"}</b> · ${change}`;
+        $("chart").innerHTML = readings.map((r) => {
+          const value = valueFor(r, trendType);
+          const height = 28 + ((value - low) / spread) * 67;
+          return `<div class="barwrap" title="${value}"><div class="bar" style="height:${height}%"></div><span>${value}</span></div>`;
+        }).join("");
+      }
+      document.querySelectorAll(".trend-choice").forEach((button) => {
+        button.onclick = () => {
+          trendType = button.dataset.trend;
+          document.querySelectorAll(".trend-choice").forEach((x) => x.classList.toggle("on", x == button));
+          renderTrend();
+        };
+      });
+      let trendType = "bp";
       window.del = (id) => {
         rs = rs.filter((x) => x.id != id);
         localStorage.setItem(K, JSON.stringify(rs));
