@@ -74,6 +74,17 @@
         background: var(--i);
         color: white;
       }
+      button.nav {
+        width: 100%;
+        border: 0;
+        background: transparent;
+        color: var(--m);
+        text-align: left;
+        font-weight: 700;
+      }
+      .view.hide { display: none; }
+      .history-page { margin-top: 0; }
+      .history-page .row:first-child { border-top: 0; }
       .tip {
         margin-top: 35px;
         background: #092a50;
@@ -428,14 +439,14 @@
       <div class="layout">
         <aside class="side">
           <p>MENU</p>
-          <div class="nav on">⌂ &nbsp; Dashboard</div>
-          <div class="nav">⌁ &nbsp; History</div>
+          <button class="nav on" id="nav-dashboard" type="button">⌂ &nbsp; Dashboard</button>
+          <button class="nav" id="nav-history" type="button">⌁ &nbsp; History</button>
           <div class="nav">✦ &nbsp; Insights</div>
           <div class="tip">
             <b>One step at a time.</b><br />Log a reading whenever you take one.
           </div>
         </aside>
-        <section>
+        <section id="dashboard-view" class="view">
           <div class="welcome">
             <div>
               <h1>Good to see you.</h1>
@@ -513,6 +524,24 @@
               <button id="clear" class="secondary">Clear all</button>
             </div>
             <div id="history"><p class="sub">No readings saved yet.</p></div>
+          </section>
+        </section>
+        <section id="history-view" class="view hide">
+          <div class="welcome">
+            <div>
+              <h1>Reading history</h1>
+              <p>Every reading saved on this device.</p>
+            </div>
+          </div>
+          <section class="card history history-page">
+            <div class="head">
+              <div>
+                <h2>All readings</h2>
+                <p class="sub" id="history-count">0 saved</p>
+              </div>
+              <button id="history-clear" class="secondary">Clear all</button>
+            </div>
+            <div id="all-history"><p class="sub">No readings saved yet.</p></div>
           </section>
         </section>
       </div>
@@ -745,7 +774,25 @@
               .join("")
           : '<p class="sub">No readings saved yet.</p>';
         renderTrend();
+        renderAllHistory();
       }
+      function renderAllHistory() {
+        $("history-count").textContent = rs.length + (rs.length == 1 ? " saved" : " saved");
+        $("all-history").innerHTML = rs.length
+          ? rs.map((r) => `<div class="row"><div><b>${r.t == "bp" ? "Blood pressure" : "Blood glucose"}</b><div class="date">${r.d}</div></div><div><b>${r.v}</b><button class="delete" onclick="del(${r.id})" aria-label="Delete reading">×</button></div></div>`).join("")
+          : '<p class="sub">No readings saved yet.</p>';
+      }
+      function showView(name) {
+        const isHistory = name == "history";
+        $("dashboard-view").classList.toggle("hide", isHistory);
+        $("history-view").classList.toggle("hide", !isHistory);
+        $("nav-dashboard").classList.toggle("on", !isHistory);
+        $("nav-history").classList.toggle("on", isHistory);
+        if (isHistory) renderAllHistory();
+      }
+      $("nav-dashboard").onclick = () => showView("dashboard");
+      $("nav-history").onclick = () => showView("history");
+      $("history-clear").onclick = () => $("clear").click();
       function valueFor(r, kind) {
         if (kind == "bp") return r.sys || Number((r.v || "").split("/")[0]);
         return r.glucose || Number((r.v || "").match(/\d+/)?.[0]);
