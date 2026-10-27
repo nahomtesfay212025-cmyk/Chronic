@@ -467,6 +467,7 @@
               <img id="preview" class="preview" />
               <div id="scan" class="scan">
                 Photo ready.<button id="read" class="read">Scan again</button
+                ><button id="retake" class="read" type="button" style="display: none">Retake photo</button
                 ><span id="status"></span>
               </div>
               <div id="bp" class="fields">
@@ -600,6 +601,7 @@
         $("preview").src = img;
         $("preview").style.display = "block";
         $("scan").style.display = "block";
+        $("retake").style.display = "none";
         extractReading();
       }
       $("photo").onchange = (e) => {
@@ -634,6 +636,7 @@
         $("camera-modal").classList.add("hide");
       }
       $("open-camera").onclick = openCamera;
+      $("retake").onclick = openCamera;
       $("close-camera").onclick = closeCamera;
       $("capture-photo").onclick = () => {
         const video = $("camera-preview");
@@ -646,13 +649,22 @@
         closeCamera();
         say("Photo captured. Extracting the reading…");
       };
+      function invalidPhoto(message) {
+        if (t == "bp") {
+          $("sys").value = "";
+          $("dia").value = "";
+        } else $("glu").value = "";
+        $("status").textContent = " " + message;
+        $("retake").style.display = "inline-block";
+      }
       async function extractReading() {
         if (!img || !window.Tesseract) {
           $("status").textContent = " Scanner is loading—try Scan again in a moment.";
           return;
         }
         $("read").disabled = true;
-        $("status").textContent = " Extracting numbers from photo…";
+        $("retake").style.display = "none";
+        $("status").textContent = " Checking for a monitor display…";
         try {
           const { text } = await Tesseract.recognize(img, "eng").then((x) => x.data);
           const numbers = (text.match(/\\d{2,3}/g) || []).map(Number);
@@ -661,18 +673,22 @@
             const diastolic = numbers.find((x) => x >= 35 && x <= 150 && x !== systolic);
             $("sys").value = systolic || "";
             $("dia").value = diastolic || "";
-            $("status").textContent = systolic && diastolic
-              ? " Readings filled in. Please confirm them before saving."
-              : " I could not read both values clearly. Try Scan again or enter the missing value.";
+            if (systolic && diastolic) {
+              $("status").textContent = " Readings filled in. Please confirm them before saving.";
+            } else {
+              invalidPhoto("This does not look like a readable blood-pressure monitor display. Please take or upload the correct photo.");
+            }
           } else {
             const glucose = numbers.find((x) => x >= 20 && x <= 700);
             $("glu").value = glucose || "";
-            $("status").textContent = glucose
-              ? " Reading filled in. Please confirm it before saving."
-              : " I could not read a glucose value clearly. Try Scan again or enter it manually.";
+            if (glucose) {
+              $("status").textContent = " Reading filled in. Please confirm it before saving.";
+            } else {
+              invalidPhoto("This does not look like a readable glucose monitor display. Please take or upload the correct photo.");
+            }
           }
         } catch (e) {
-          $("status").textContent = " I could not read the photo. Try a clearer image or enter the value manually.";
+          invalidPhoto("This does not look like a readable monitor photo. Please take or upload the correct photo.");
         } finally {
           $("read").disabled = false;
         }
