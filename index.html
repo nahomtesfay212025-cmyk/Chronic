@@ -667,7 +667,7 @@
         $("status").textContent = " Checking for a monitor display…";
         try {
           const { text } = await Tesseract.recognize(img, "eng").then((x) => x.data);
-          const numbers = (text.match(/\\d{2,3}/g) || []).map(Number);
+          const numbers = (text.match(/\d{2,3}/g) || []).map(Number);
           if (t == "bp") {
             const systolic = numbers.find((x) => x >= 70 && x <= 250);
             const diastolic = numbers.find((x) => x >= 35 && x <= 150 && x !== systolic);
@@ -745,7 +745,7 @@
       }
       function valueFor(r, kind) {
         if (kind == "bp") return r.sys || Number((r.v || "").split("/")[0]);
-        return r.glucose || Number((r.v || "").match(/\\d+/)?.[0]);
+        return r.glucose || Number((r.v || "").match(/\d+/)?.[0]);
       }
       function renderTrend() {
         const readings = rs.filter((r) => r.t == trendType && valueFor(r, trendType)).slice(0, 7).reverse();
