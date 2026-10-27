@@ -85,6 +85,22 @@
       .view.hide { display: none; }
       .history-page { margin-top: 0; }
       .history-page .row:first-child { border-top: 0; }
+      .history-filters {
+        display: flex;
+        gap: 8px;
+        margin: 17px 0 8px;
+        flex-wrap: wrap;
+      }
+      .history-filter {
+        border: 1px solid #47729b;
+        background: transparent;
+        color: var(--m);
+        padding: 8px 11px;
+        border-radius: 99px;
+        font-size: 0.78rem;
+        font-weight: 800;
+      }
+      .history-filter.on { background: #ffffff; color: var(--i); }
       .tip {
         margin-top: 35px;
         background: #092a50;
@@ -541,6 +557,11 @@
               </div>
               <button id="history-clear" class="secondary">Clear all</button>
             </div>
+            <div class="history-filters" aria-label="Filter reading history">
+              <button class="history-filter on" data-filter="all" type="button">All</button>
+              <button class="history-filter" data-filter="bp" type="button">Blood pressure</button>
+              <button class="history-filter" data-filter="gl" type="button">Blood glucose</button>
+            </div>
             <div id="all-history"><p class="sub">No readings saved yet.</p></div>
           </section>
         </section>
@@ -776,12 +797,22 @@
         renderTrend();
         renderAllHistory();
       }
+      let historyFilter = "all";
       function renderAllHistory() {
-        $("history-count").textContent = rs.length + (rs.length == 1 ? " saved" : " saved");
-        $("all-history").innerHTML = rs.length
-          ? rs.map((r) => `<div class="row"><div><b>${r.t == "bp" ? "Blood pressure" : "Blood glucose"}</b><div class="date">${r.d}</div></div><div><b>${r.v}</b><button class="delete" onclick="del(${r.id})" aria-label="Delete reading">×</button></div></div>`).join("")
-          : '<p class="sub">No readings saved yet.</p>';
+        const visible = historyFilter == "all" ? rs : rs.filter((r) => r.t == historyFilter);
+        const label = historyFilter == "all" ? "saved" : (historyFilter == "bp" ? "blood-pressure readings" : "blood-glucose readings");
+        $("history-count").textContent = visible.length + " " + label;
+        $("all-history").innerHTML = visible.length
+          ? visible.map((r) => `<div class="row"><div><b>${r.t == "bp" ? "Blood pressure" : "Blood glucose"}</b><div class="date">${r.d}</div></div><div><b>${r.v}</b><button class="delete" onclick="del(${r.id})" aria-label="Delete reading">×</button></div></div>`).join("")
+          : '<p class="sub">No readings match this filter yet.</p>';
       }
+      document.querySelectorAll(".history-filter").forEach((button) => {
+        button.onclick = () => {
+          historyFilter = button.dataset.filter;
+          document.querySelectorAll(".history-filter").forEach((x) => x.classList.toggle("on", x == button));
+          renderAllHistory();
+        };
+      });
       function showView(name) {
         const isHistory = name == "history";
         $("dashboard-view").classList.toggle("hide", isHistory);
