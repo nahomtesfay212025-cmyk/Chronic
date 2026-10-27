@@ -650,6 +650,9 @@
         say("Photo captured. Extracting the reading…");
       };
       function invalidPhoto(message) {
+        img = "";
+        $("preview").src = "";
+        $("preview").style.display = "none";
         if (t == "bp") {
           $("sys").value = "";
           $("dia").value = "";
