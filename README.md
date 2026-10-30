@@ -1,51 +1,60 @@
 # VitalTrack
 
-A browser-based prototype for recording blood-pressure and blood-glucose readings. Users can take or upload a monitor photo, review extracted numbers, save readings, view History, and see simple tracking Insights. Data stays in the browser on the current device.
+VitalTrack is a React app for recording blood-pressure and blood-glucose readings. It supports camera or image upload, browser-based OCR, editable local readings, History filters, trends, and non-diagnostic Insights. Data remains in the browser on the current device.
+
+## Technology
+
+- React
+- Vite
+- Tesseract.js for browser-based text extraction
+- LocalStorage for prototype data
 
 ## Run locally
 
-Use a local server so the camera button can work.
+You need Node.js 20 or newer.
 
 ```bash
 git clone https://github.com/nahomtesfay212025-cmyk/Chronic.git
 cd Chronic
-python3 -m http.server 8000
+npm install
+npm run dev
 ```
 
-Then open:
+Open the local link shown in your terminal, usually:
 
 ```text
-http://localhost:8000
+http://localhost:5173
 ```
 
-To stop the server, press `Control + C` in the terminal.
+Using `localhost` allows the browser to request camera permission.
 
-### Update your local copy
+## Build for production
 
-When new code is added to GitHub, run:
+```bash
+npm run build
+npm run preview
+```
+
+## Update your local copy
 
 ```bash
 git pull origin main
+npm install
+npm run dev
 ```
-
-Then refresh your browser.
-
-## No installation needed
-
-This project is a single HTML file. It does not need `npm install`, a database, or a backend server for the current prototype.
 
 ## Deploy with GitHub Pages
 
-1. Open the repository **Settings**.
-2. Choose **Pages** in the left menu.
-3. Under **Build and deployment**, select **Deploy from a branch**.
-4. Choose branch `main` and folder `/(root)`.
-5. Click **Save**.
+This repository includes a GitHub Actions deployment workflow.
 
-Your deployed website will be:
+1. Open the repository **Settings** → **Pages**.
+2. Under **Build and deployment**, set **Source** to **GitHub Actions**.
+3. Push to the `main` branch.
+
+GitHub Actions will build the React app and publish it to:
 
 ```text
 https://nahomtesfay212025-cmyk.github.io/Chronic/
 ```
 
-GitHub Pages uses HTTPS, which is needed for browser camera access.
+> VitalTrack is for tracking only and does not provide medical advice.
