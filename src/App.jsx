@@ -5,6 +5,20 @@ const TOKEN_KEY = "vitaltrack-token";
 const PROFILE_KEY = "vitaltrack-profile";
 const API_URL = import.meta.env.VITE_API_URL || "https://chronic-zf00.onrender.com";
 
+async function wakeApi() {
+  const deadline = Date.now() + 75000;
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(`${API_URL}/health`);
+      if (response.ok) return;
+    } catch {
+      // Render can take a short time to wake its free service.
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 3000));
+  }
+  throw new Error("The secure server is still waking up. Please try again in a minute.");
+}
+
 async function api(path, options = {}, token) {
   const response = await fetch(`${API_URL}${path}`, {
     ...options,
@@ -258,6 +272,9 @@ function AuthScreen({ onSuccess }) {
   const submit = async (event) => {
     event.preventDefault(); setBusy(true); setMessage("");
     try {
+      setMessage("Starting the secure server…");
+      await wakeApi();
+      setMessage("");
       if (mode === "signup") {
         await api("/auth/register", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password }) });
       }
