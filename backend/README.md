@@ -1,6 +1,6 @@
 # VitalTrack backend
 
-FastAPI API backed by PostgreSQL. It stores blood-pressure and glucose readings.
+FastAPI + PostgreSQL API for VitalTrack. It supports secure email/password accounts and private blood-pressure and glucose readings.
 
 ## Start locally
 
@@ -13,23 +13,26 @@ python -m pip install -r requirements.txt
 python -m uvicorn main:app --reload
 ```
 
+Before starting, create a `.env` file beside `main.py` using `.env.example` as the guide. Set `JWT_SECRET` to a long random value. Do not commit `.env`.
+
 Open `http://127.0.0.1:8000/docs` to test the API.
 
-## Database
+## Deployment settings
 
-The default local connection is:
+In Render, add these environment variables:
 
-```text
-postgresql+psycopg://nahomtesfay@localhost:5432/vitaltrack
-```
+- `DATABASE_URL`: the Internal Database URL from your Render PostgreSQL database.
+- `JWT_SECRET`: a long, private, random value. Use Render's **Generate** button; never put this value in GitHub.
+- `CORS_ORIGINS`: `https://nahomtesfay212025-cmyk.github.io`
 
-Keep the Postgres.app server running. To use another database URL, copy `.env.example` to `.env` and edit the value. Do not commit `.env`; it can contain credentials.
+## Main routes
 
-## Routes
-
-- `GET /health`
+- `POST /auth/register`
+- `POST /auth/token`
+- `GET /auth/me`
 - `POST /readings`
 - `GET /readings`
-- `GET /readings?reading_type=bp`
 - `PUT /readings/{reading_id}`
 - `DELETE /readings/{reading_id}`
+
+Every readings route requires a login token. A signed-in user can only read and change their own readings.
