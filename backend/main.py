@@ -83,7 +83,8 @@ class ReadingResponse(BaseModel):
 
 
 def initialize_database():
-    # These statements also upgrade the small table created during local setup.
+    # Create a fresh table in cloud deployments before applying local-table upgrades.
+    Base.metadata.create_all(bind=engine)
     with engine.begin() as connection:
         connection.execute(
             text(
@@ -94,7 +95,6 @@ def initialize_database():
         connection.execute(text("ALTER TABLE readings ADD COLUMN IF NOT EXISTS glucose INTEGER"))
         connection.execute(text("ALTER TABLE readings ALTER COLUMN systolic DROP NOT NULL"))
         connection.execute(text("ALTER TABLE readings ALTER COLUMN diastolic DROP NOT NULL"))
-    Base.metadata.create_all(bind=engine)
 
 
 app = FastAPI(title="VitalTrack API", version="1.0.0")
