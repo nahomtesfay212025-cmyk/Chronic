@@ -3,7 +3,7 @@ import { recognize } from "tesseract.js";
 
 const TOKEN_KEY = "vitaltrack-token";
 const PROFILE_KEY = "vitaltrack-profile";
-const API_URL = import.meta.env.VITE_API_URL || "https://chronic-zf00.onrender.com";
+const API_URL = import.meta.env.VITE_API_URL || "https://vitaltrack-api-3az1.onrender.com";
 
 async function wakeApi() {
   const deadline = Date.now() + 75000;
