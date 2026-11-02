@@ -1,15 +1,16 @@
 # VitalTrack
 
-VitalTrack is a React app for recording blood-pressure and blood-glucose readings. It supports camera or image upload, browser-based OCR, editable local readings, History filters, trends, and non-diagnostic Insights. Data remains in the browser on the current device.
+VitalTrack is a React app for recording blood-pressure and blood-glucose readings. It supports camera or image upload, browser-based OCR, editable local readings, History filters, trends, and non-diagnostic Insights.
 
 ## Technology
 
-- React
-- Vite
+- React + Vite
+- FastAPI + Python
+- PostgreSQL
+- SQLAlchemy + Psycopg
 - Tesseract.js for browser-based text extraction
-- LocalStorage for prototype data
 
-## Run locally
+## Run the React app locally
 
 You need Node.js 20 or newer.
 
@@ -20,41 +21,41 @@ npm install
 npm run dev
 ```
 
-Open the local link shown in your terminal, usually:
+Open the local link shown in your terminal, usually `http://localhost:5173`.
 
-```text
-http://localhost:5173
+## Run the FastAPI backend locally
+
+Install and start PostgreSQL first (Postgres.app works well on macOS). Create a database named `vitaltrack`, then run:
+
+```bash
+cd backend
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+cp .env.example .env
+python -m uvicorn main:app --reload
 ```
 
-Using `localhost` allows the browser to request camera permission.
+Open `http://127.0.0.1:8000/docs` to test the API.
 
-## Build for production
+The backend includes:
+
+- `POST /readings` — create a reading
+- `GET /readings` — retrieve readings
+- `PUT /readings/{reading_id}` — edit a reading
+- `DELETE /readings/{reading_id}` — delete a reading
+
+> The React app currently keeps its existing browser storage behavior. Connecting its Save, History, and Insights screens to this API is the next integration step.
+
+## Build the React app
 
 ```bash
 npm run build
 npm run preview
 ```
 
-## Update your local copy
-
-```bash
-git pull origin main
-npm install
-npm run dev
-```
-
 ## Deploy with GitHub Pages
 
-This repository includes a GitHub Actions deployment workflow.
-
-1. Open the repository **Settings** → **Pages**.
-2. Under **Build and deployment**, set **Source** to **GitHub Actions**.
-3. Push to the `main` branch.
-
-GitHub Actions will build the React app and publish it to:
-
-```text
-https://nahomtesfay212025-cmyk.github.io/Chronic/
-```
+GitHub Pages deploys the React frontend only. A FastAPI backend needs its own server deployment, such as Railway, Render, or a cloud service, before the public website can use it.
 
 > VitalTrack is for tracking only and does not provide medical advice.
