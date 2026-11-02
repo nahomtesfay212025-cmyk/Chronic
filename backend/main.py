@@ -5,8 +5,11 @@ from typing import Literal, Optional
 from fastapi import Depends, FastAPI, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, model_validator
+from dotenv import load_dotenv
 from sqlalchemy import DateTime, Integer, String, create_engine, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
+
+load_dotenv()
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
