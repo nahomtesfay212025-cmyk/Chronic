@@ -1,12 +1,34 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { recognize } from "tesseract.js";
 
-const STORAGE_KEY = "vitaltrack-readings";
+const TOKEN_KEY = "vitaltrack-token";
 const PROFILE_KEY = "vitaltrack-profile";
+const API_URL = import.meta.env.VITE_API_URL || "https://chronic-zf00.onrender.com";
 
-function loadReadings() {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"); }
-  catch { return []; }
+async function api(path, options = {}, token) {
+  const response = await fetch(`${API_URL}${path}`, {
+    ...options,
+    headers: { ...(options.headers || {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.detail || "Something went wrong. Please try again.");
+  }
+  return response.status === 204 ? null : response.json();
+}
+
+function toReading(item) {
+  const bp = item.reading_type === "bp";
+  const date = new Date(item.recorded_at);
+  return {
+    id: item.id,
+    t: bp ? "bp" : "gl",
+    sys: item.systolic,
+    dia: item.diastolic,
+    glucose: item.glucose,
+    v: bp ? `${item.systolic}/${item.diastolic} mmHg` : `${item.glucose} mg/dL`,
+    d: date.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }),
+  };
 }
 const valueFor = (reading, type) =>
   type === "bp"
@@ -14,7 +36,7 @@ const valueFor = (reading, type) =>
     : reading.glucose || Number((reading.v || "").match(/\d+/)?.[0]);
 
 export default function App() {
-  const [readings, setReadings] = useState(loadReadings);
+  const [readings, setReadings] = useState([]);
   const [view, setView] = useState("dashboard");
   const [type, setType] = useState("bp");
   const [trendType, setTrendType] = useState("bp");
@@ -28,11 +50,26 @@ export default function App() {
   const [editing, setEditing] = useState(null);
   const [onboarding, setOnboarding] = useState(!localStorage.getItem(PROFILE_KEY));
   const [toast, setToast] = useState("");
+  const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY));
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const videoRef = useRef(null);
   const streamRef = useRef(null);
 
-  useEffect(() => localStorage.setItem(STORAGE_KEY, JSON.stringify(readings)), [readings]);
   useEffect(() => () => stopCamera(), []);
+  useEffect(() => {
+    if (!token) { setAuthLoading(false); return; }
+    Promise.all([api("/auth/me", {}, token), api("/readings", {}, token)])
+      .then(([account, savedReadings]) => {
+        setUser(account);
+        setReadings(savedReadings.map(toReading));
+      })
+      .catch(() => {
+        localStorage.removeItem(TOKEN_KEY);
+        setToken(null);
+      })
+      .finally(() => setAuthLoading(false));
+  }, [token]);
 
   const flash = (message) => {
     setToast(message);
@@ -107,22 +144,53 @@ export default function App() {
     selectImage(photo);
     flash("Photo captured. Extracting the reading…");
   };
-  const saveReading = () => {
+  const saveReading = async () => {
     const isBp = type === "bp";
     if ((isBp && (!values.sys || !values.dia)) || (!isBp && !values.glucose)) return flash("Enter the reading first.");
-    const record = isBp
-      ? { id: Date.now(), t: "bp", sys: Number(values.sys), dia: Number(values.dia), v: `${values.sys}/${values.dia} mmHg` }
-      : { id: Date.now(), t: "gl", glucose: Number(values.glucose), v: `${values.glucose} mg/dL` };
-    record.d = new Date().toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-    setReadings((current) => [record, ...current]);
-    setValues({ sys: "", dia: "", glucose: "" });
-    setImage(""); setStatus(""); setRetake(false);
-    flash("Reading saved");
+    try {
+      const saved = await api("/readings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(isBp
+          ? { reading_type: "bp", systolic: Number(values.sys), diastolic: Number(values.dia) }
+          : { reading_type: "glucose", glucose: Number(values.glucose) }),
+      }, token);
+      setReadings((current) => [toReading(saved), ...current]);
+      setValues({ sys: "", dia: "", glucose: "" });
+      setImage(""); setStatus(""); setRetake(false);
+      flash("Reading saved to your account");
+    } catch (error) { flash(error.message); }
   };
-  const deleteReading = (id) => setReadings((current) => current.filter((reading) => reading.id !== id));
-  const saveEdit = (record) => {
-    setReadings((current) => current.map((reading) => reading.id === record.id ? record : reading));
-    setEditing(null); flash("Reading updated");
+  const deleteReading = async (id) => {
+    try {
+      await api(`/readings/${id}`, { method: "DELETE" }, token);
+      setReadings((current) => current.filter((reading) => reading.id !== id));
+    } catch (error) { flash(error.message); }
+  };
+  const clearReadings = async () => {
+    if (!readings.length || !window.confirm("Delete all of your readings?")) return;
+    try {
+      await Promise.all(readings.map((reading) => api(`/readings/${reading.id}`, { method: "DELETE" }, token)));
+      setReadings([]);
+      flash("All readings deleted");
+    } catch (error) { flash(error.message); }
+  };
+  const saveEdit = async (record) => {
+    const body = record.t === "bp"
+      ? { reading_type: "bp", systolic: Number(record.sys), diastolic: Number(record.dia) }
+      : { reading_type: "glucose", glucose: Number(record.glucose) };
+    try {
+      const saved = await api(`/readings/${record.id}`, {
+        method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+      }, token);
+      const updated = toReading(saved);
+      setReadings((current) => current.map((reading) => reading.id === updated.id ? updated : reading));
+      setEditing(null); flash("Reading updated");
+    } catch (error) { flash(error.message); }
+  };
+  const signOut = () => {
+    localStorage.removeItem(TOKEN_KEY);
+    setToken(null); setUser(null); setReadings([]);
   };
 
   const recent = readings.slice(0, 6);
@@ -130,8 +198,11 @@ export default function App() {
   const trend = useMemo(() => readings.filter((r) => r.t === trendType).slice(0, 7).reverse(), [readings, trendType]);
   const insightReadings = useMemo(() => readings.filter((r) => r.t === insightType).reverse(), [readings, insightType]);
 
+  if (authLoading) return <main className="auth-page"><p>Loading your private VitalTrack account…</p></main>;
+  if (!user) return <AuthScreen onSuccess={(newToken) => { localStorage.setItem(TOKEN_KEY, newToken); setToken(newToken); setAuthLoading(true); }} />;
+
   return <main className="app">
-    <header className="top"><div className="brand">vital<b>track</b></div><button className="profile" onClick={() => setOnboarding(true)}>My profile</button></header>
+    <header className="top"><div className="brand">vital<b>track</b></div><div className="account"><span>{user.email}</span><button className="profile" onClick={signOut}>Sign out</button></div></header>
     <div className="layout">
       <aside className="side">
         <p>MENU</p>
@@ -156,12 +227,12 @@ export default function App() {
           </section>
           <TrendCard readings={trend} type={trendType} setType={setTrendType} />
         </div>
-        <ReadingList title="Recent readings" readings={recent} onEdit={setEditing} onDelete={deleteReading} clear={() => setReadings([])} />
+        <ReadingList title="Recent readings" readings={recent} onEdit={setEditing} onDelete={deleteReading} clear={clearReadings} />
       </section>}
 
       {view === "history" && <section>
-        <div className="welcome"><div><h1>Reading history</h1><p>Every reading saved on this device.</p></div></div>
-        <section className="card history"><div className="head"><div><h2>All readings</h2><p className="sub">{history.length} saved</p></div><button className="secondary" onClick={() => setReadings([])}>Clear all</button></div>
+        <div className="welcome"><div><h1>Reading history</h1><p>Your private saved readings.</p></div></div>
+        <section className="card history"><div className="head"><div><h2>All readings</h2><p className="sub">{history.length} saved</p></div><button className="secondary" onClick={clearReadings}>Clear all</button></div>
           <div className="filters">{[["all","All"],["bp","Blood pressure"],["gl","Blood glucose"]].map(([key,label]) => <button key={key} className={historyFilter === key ? "on" : ""} onClick={() => setHistoryFilter(key)}>{label}</button>)}</div>
           <Rows readings={history} onEdit={setEditing} onDelete={deleteReading} empty="No readings match this filter yet." />
         </section>
@@ -177,12 +248,47 @@ export default function App() {
   </main>;
 }
 
+
+function AuthScreen({ onSuccess }) {
+  const [mode, setMode] = useState("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+  const submit = async (event) => {
+    event.preventDefault(); setBusy(true); setMessage("");
+    try {
+      if (mode === "signup") {
+        await api("/auth/register", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password }) });
+      }
+      const form = new URLSearchParams({ username: email, password });
+      const token = await api("/auth/token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: form });
+      onSuccess(token.access_token);
+    } catch (error) { setMessage(error.message); }
+    finally { setBusy(false); }
+  };
+  return <main className="auth-page"><section className="auth-card">
+    <div className="brand">vital<b>track</b></div>
+    <h1>{mode === "login" ? "Welcome back" : "Create your account"}</h1>
+    <p>Your readings will be private to your account.</p>
+    <form onSubmit={submit}>
+      <label>Email<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></label>
+      <label>Password<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} minLength="8" required /></label>
+      {message && <p className="auth-error">{message}</p>}
+      <button className="primary" disabled={busy}>{busy ? "Please wait…" : mode === "login" ? "Log in" : "Create account"}</button>
+    </form>
+    <button className="auth-switch" onClick={() => { setMode(mode === "login" ? "signup" : "login"); setMessage(""); }}>
+      {mode === "login" ? "Need an account? Sign up" : "Already have an account? Log in"}
+    </button>
+  </section></main>;
+}
+
 function TrendCard({ readings, type, setType }) {
   const values = readings.map((r) => valueFor(r, type));
   const latest = values.at(-1), previous = values.at(-2);
   const low = Math.min(...values, 0), high = Math.max(...values, 1), spread = high - low || 1;
   const change = previous === undefined ? "" : latest === previous ? "No change from previous" : `${latest > previous ? "↑" : "↓"} ${Math.abs(latest - previous)} from previous`;
-  return <section className="card activity"><div className="head"><div><h2>Your trends</h2><p className="sub">Based on readings saved on this device</p></div><span className="badge">{readings.length ? "Tracking" : "No data"}</span></div><div className="count">{readings.length}</div><p>readings saved</p><div className="toggle"><button className={type === "bp" ? "on" : ""} onClick={() => setType("bp")}>Blood pressure</button><button className={type === "gl" ? "on" : ""} onClick={() => setType("gl")}>Blood glucose</button></div>{values.length ? <><p>Latest: <b>{latest} {type === "bp" ? "mmHg" : "mg/dL"}</b> · {change}</p><div className="chart">{values.map((value, i) => <div className="barwrap" key={i}><div className="bar" style={{ height: `${28 + ((value - low) / spread) * 67}%` }} /><span>{value}</span></div>)}</div></> : <p>Your pattern will appear here.</p>}</section>;
+  return <section className="card activity"><div className="head"><div><h2>Your trends</h2><p className="sub">Based on your saved readings</p></div><span className="badge">{readings.length ? "Tracking" : "No data"}</span></div><div className="count">{readings.length}</div><p>readings saved</p><div className="toggle"><button className={type === "bp" ? "on" : ""} onClick={() => setType("bp")}>Blood pressure</button><button className={type === "gl" ? "on" : ""} onClick={() => setType("gl")}>Blood glucose</button></div>{values.length ? <><p>Latest: <b>{latest} {type === "bp" ? "mmHg" : "mg/dL"}</b> · {change}</p><div className="chart">{values.map((value, i) => <div className="barwrap" key={i}><div className="bar" style={{ height: `${28 + ((value - low) / spread) * 67}%` }} /><span>{value}</span></div>)}</div></> : <p>Your pattern will appear here.</p>}</section>;
 }
 
 function ReadingList({ title, readings, onEdit, onDelete, clear }) {
@@ -196,7 +302,7 @@ function Insights({ readings, type, setType }) {
  const latest = primary.at(-1), previous = primary.at(-2);
  const average = primary.length ? Math.round(primary.reduce((a,b) => a+b,0)/primary.length) : 0;
  const dia = readings.map((r) => r.dia).filter(Boolean);
- return <section><div className="welcome"><div><h1>Your insights</h1><p>Simple summaries from readings saved on this device.</p></div></div><section className="card"><div className="head"><div><h2>Reading summary</h2><p className="sub">Tracking information only, not medical advice.</p></div></div><div className="toggle"><button className={type === "bp" ? "on" : ""} onClick={() => setType("bp")}>Blood pressure</button><button className={type === "gl" ? "on" : ""} onClick={() => setType("gl")}>Blood glucose</button></div>{!readings.length ? <div className="insight-note">Save {type === "bp" ? "blood-pressure" : "blood-glucose"} readings to unlock your summary.</div> : <><div className="insight-grid"><Stat label="Readings saved" value={readings.length}/><Stat label={type === "bp" ? "Average systolic" : "Average glucose"} value={`${average} ${type === "bp" ? "mmHg" : "mg/dL"}`}/><Stat label={type === "bp" ? "Average diastolic" : "Latest reading"} value={type === "bp" ? `${Math.round(dia.reduce((a,b)=>a+b,0)/dia.length)} mmHg` : `${latest} mg/dL`}/></div><div className="insight-note"><b>Latest trend:</b> {previous === undefined ? "No earlier reading to compare." : latest === previous ? "Your latest value is the same as the previous one." : `Your latest value is ${Math.abs(latest-previous)} ${latest>previous ? "higher" : "lower"} than the previous one.`}</div></>}</section></section>;
+ return <section><div className="welcome"><div><h1>Your insights</h1><p>Simple summaries from your saved readings.</p></div></div><section className="card"><div className="head"><div><h2>Reading summary</h2><p className="sub">Tracking information only, not medical advice.</p></div></div><div className="toggle"><button className={type === "bp" ? "on" : ""} onClick={() => setType("bp")}>Blood pressure</button><button className={type === "gl" ? "on" : ""} onClick={() => setType("gl")}>Blood glucose</button></div>{!readings.length ? <div className="insight-note">Save {type === "bp" ? "blood-pressure" : "blood-glucose"} readings to unlock your summary.</div> : <><div className="insight-grid"><Stat label="Readings saved" value={readings.length}/><Stat label={type === "bp" ? "Average systolic" : "Average glucose"} value={`${average} ${type === "bp" ? "mmHg" : "mg/dL"}`}/><Stat label={type === "bp" ? "Average diastolic" : "Latest reading"} value={type === "bp" ? `${Math.round(dia.reduce((a,b)=>a+b,0)/dia.length)} mmHg` : `${latest} mg/dL`}/></div><div className="insight-note"><b>Latest trend:</b> {previous === undefined ? "No earlier reading to compare." : latest === previous ? "Your latest value is the same as the previous one." : `Your latest value is ${Math.abs(latest-previous)} ${latest>previous ? "higher" : "lower"} than the previous one.`}</div></>}</section></section>;
 }
 function Stat({ label, value }) { return <div className="insight-stat"><span>{label}</span><b>{value}</b></div>; }
 function EditModal({ reading, close, save }) {
